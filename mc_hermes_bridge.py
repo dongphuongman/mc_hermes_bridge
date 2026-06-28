@@ -156,6 +156,7 @@ def main():
 
     log(f"start | MC={MC_URL} HERMES={HERMES_URL} agent={AGENT_NAME}(id={AGENT_ID})")
     last_hb = 0.0
+    done_ids = set()  # các task đã xử lý, tránh làm lại nếu MC chưa gỡ khỏi queue
 
     while True:
         now = time.time()
@@ -165,16 +166,21 @@ def main():
 
         task = claim_task()
         if task:
-            tid   = task.get("id")
+            tid = task.get("id")
+            if tid in done_ids:
+                # MC vẫn trả lại task đã xong -> đợi rồi poll lại, KHÔNG xử lý lại
+                time.sleep(POLL_INTERVAL)
+                continue
             title = task.get("title", "")
             desc  = task.get("description", "")
             prompt = (title + "\n\n" + desc).strip() or title or desc
             log(f"task {tid}: {title!r} -> hermes")
             result = run_on_hermes(prompt, session_key=str(tid))
             log(f"task {tid}: hermes trả {len(result)} ký tự")
-            report_result(tid, result, ok=not result.startswith("[hermes"))
-            # có việc thì poll lại ngay, không chờ
-            continue
+            ok = not result.startswith("[hermes")
+            report_result(tid, result, ok=ok)
+            if ok:
+                done_ids.add(tid)
 
         time.sleep(POLL_INTERVAL)
 
