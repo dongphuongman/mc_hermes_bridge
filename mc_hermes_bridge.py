@@ -100,24 +100,15 @@ def claim_task():
 
 
 def report_result(task_id, text, ok=True):
-    """Báo kết quả về MC: comment + chuyển trạng thái.
-       MC chưa chốt 1 endpoint chuẩn cho mọi version, nên thử lần lượt."""
-    # 1) comment kết quả
-    http("POST", f"{MC_URL}/api/tasks/{task_id}/comments", MC_API_KEY,
-         {"body": text[:4000]})
-    # 2) chuyển trạng thái — thử vài biến thể, cái nào trả 2xx là xong
+    """Đóng task trong MC. Theo doc chính thức: PUT /api/tasks/{id}
+       với {status, resolution}. (POST /complete KHÔNG đổi status.)"""
     status = "done" if ok else "review"
-    attempts = [
-        ("POST", f"{MC_URL}/api/tasks/{task_id}/complete", {}),
-        ("PATCH", f"{MC_URL}/api/tasks/{task_id}", {"status": status}),
-        ("POST", f"{MC_URL}/api/tasks/{task_id}/status", {"status": status}),
-    ]
-    for method, url, payload in attempts:
-        st, _ = http(method, url, MC_API_KEY, payload)
-        if st in (200, 201, 204):
-            log(f"task {task_id} -> {status} (via {method} {url.split('/api/')[1]})")
-            return
-    log(f"task {task_id}: KHÔNG chuyển được trạng thái — kiểm tra endpoint MC")
+    st, body = http("PUT", f"{MC_URL}/api/tasks/{task_id}", MC_API_KEY,
+                    {"status": status, "resolution": text[:4000]})
+    if st in (200, 201, 204):
+        log(f"task {task_id} -> {status} (PUT /api/tasks/{task_id})")
+    else:
+        log(f"task {task_id}: đóng task lỗi {st}: {body}")
 
 
 # ----------------------- Hermes execution -------------------------
