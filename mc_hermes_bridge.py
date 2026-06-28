@@ -102,15 +102,18 @@ def claim_task():
 
 
 def report_result(task_id, text, ok=True):
-    """Thử đóng task qua PUT /api/tasks/{id} (có Origin để qua CSRF).
-       Trả True nếu đóng được, False nếu bị chặn (vd 403) -> đóng tay trên board."""
-    status = "done" if ok else "review"
+    """Đóng task qua PUT /api/tasks/{id} (có Origin để qua CSRF).
+       LƯU Ý: status 'done' bị Aegis gate chặn (403) — agent không được tự
+       ký duyệt. Dùng 'review' để task thoát in_progress; việc duyệt sang
+       'done' do người làm trên board (hoặc tắt Aegis trong Settings)."""
+    status = "review"  # luôn review: 'done' bị Aegis từ chối
     st, body = http("PUT", f"{MC_URL}/api/tasks/{task_id}", MC_API_KEY,
                     {"status": status, "resolution": text[:4000]})
     if st in (200, 201, 204):
-        log(f"task {task_id} -> {status} (đã đóng tự động)")
+        tag = "ok" if ok else "hermes-lỗi"
+        log(f"task {task_id} -> review ({tag}, chờ duyệt thủ công)")
         return True
-    log(f"task {task_id}: KHÔNG tự đóng được ({st}) -> kéo sang Done thủ công trên board")
+    log(f"task {task_id}: KHÔNG đóng được ({st}: {body}) -> xử lý tay trên board")
     return False
 
 
