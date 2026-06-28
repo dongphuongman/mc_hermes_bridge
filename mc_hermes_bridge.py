@@ -54,9 +54,11 @@ def http(method, url, token, body=None, timeout=30):
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    # Nếu gọi MC qua tên service nội bộ, cần Host header hợp lệ để qua allowlist.
+    # Nếu gọi MC qua tên service nội bộ, cần Host header hợp lệ để qua allowlist,
+    # và Origin hợp lệ để qua CSRF origin check (cần cho các thao tác ghi như PUT).
     if MC_HOST_HEADER and url.startswith(MC_URL):
         headers["Host"] = MC_HOST_HEADER
+        headers["Origin"] = f"https://{MC_HOST_HEADER}"
     if body is not None:
         data = json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -100,15 +102,16 @@ def claim_task():
 
 
 def report_result(task_id, text, ok=True):
-    """Đóng task trong MC. Theo doc chính thức: PUT /api/tasks/{id}
-       với {status, resolution}. (POST /complete KHÔNG đổi status.)"""
+    """Thử đóng task qua PUT /api/tasks/{id} (có Origin để qua CSRF).
+       Trả True nếu đóng được, False nếu bị chặn (vd 403) -> đóng tay trên board."""
     status = "done" if ok else "review"
     st, body = http("PUT", f"{MC_URL}/api/tasks/{task_id}", MC_API_KEY,
                     {"status": status, "resolution": text[:4000]})
     if st in (200, 201, 204):
-        log(f"task {task_id} -> {status} (PUT /api/tasks/{task_id})")
-    else:
-        log(f"task {task_id}: đóng task lỗi {st}: {body}")
+        log(f"task {task_id} -> {status} (đã đóng tự động)")
+        return True
+    log(f"task {task_id}: KHÔNG tự đóng được ({st}) -> kéo sang Done thủ công trên board")
+    return False
 
 
 # ----------------------- Hermes execution -------------------------
@@ -170,8 +173,10 @@ def main():
             log(f"task {tid}: hermes trả {len(result)} ký tự")
             ok = not result.startswith("[hermes")
             report_result(tid, result, ok=ok)
-            if ok:
-                done_ids.add(tid)
+            # Luôn nhớ task đã xử lý -> KHÔNG chạy lại hermes dù task còn kẹt
+            # in_progress (tránh đốt token). Nếu không tự đóng được, kéo tay
+            # trên board để giải phóng agent cho task kế tiếp.
+            done_ids.add(tid)
 
         time.sleep(POLL_INTERVAL)
 
