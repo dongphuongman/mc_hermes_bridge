@@ -25,6 +25,9 @@ import urllib.error
 # Địa chỉ nội bộ trên docker network của Coolify (cùng stack với hermes/MC).
 MC_URL       = os.environ.get("MC_URL", "http://mission-control:3000").rstrip("/")
 HERMES_URL   = os.environ.get("HERMES_URL", "http://hermes:8642").rstrip("/")
+# Khi gọi MC qua tên service nội bộ, MC chặn theo MC_ALLOWED_HOSTS.
+# Đặt MC_HOST_HEADER = domain hợp lệ (vd mc.dxvn.tech) để vượt allowlist.
+MC_HOST_HEADER = os.environ.get("MC_HOST_HEADER", "")
 
 # Key MC (header Authorization khi gọi MC). ROTATE sau khi lộ!
 MC_API_KEY   = os.environ.get("MC_API_KEY", "")
@@ -51,6 +54,9 @@ def http(method, url, token, body=None, timeout=30):
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    # Nếu gọi MC qua tên service nội bộ, cần Host header hợp lệ để qua allowlist.
+    if MC_HOST_HEADER and url.startswith(MC_URL):
+        headers["Host"] = MC_HOST_HEADER
     if body is not None:
         data = json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
